@@ -114,13 +114,13 @@ it out of your commits.
 
 3. **Development Run the application:** (DEV SERVER)
    ```
-   go run main.go
+   go run src/main.go
    ```
 
 4. **Build and Run the application:** (BUILD SERVER)
    ```
-   go build main.go
-   ./main
+   go build -o bin/main src/main.go
+   ./bin/main
    ```
 
 ## Docker Setup
