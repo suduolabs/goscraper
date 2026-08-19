@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"goscraper/src/utils"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -38,7 +39,7 @@ func (lf *LoginFetcher) Logout(token string) (map[string]interface{}, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	req.Header.Set("Cookie", token)
 
-	if err := fasthttp.Do(req, resp); err != nil {
+	if err := utils.Client.Do(req, resp); err != nil {
 		return nil, err
 	}
 
@@ -97,7 +98,7 @@ func (lf *LoginFetcher) loginWithRetry(username, password string, cdigest, captc
 	}
 	req.SetBody(args.QueryString())
 
-	if err := fasthttp.Do(req, resp); err != nil {
+	if err := utils.Client.Do(req, resp); err != nil {
 		return nil, err
 	}
 
@@ -155,7 +156,7 @@ func (lf *LoginFetcher) loginWithRetry(username, password string, cdigest, captc
 	req.Header.Set("Cookie", lf.getCookieStr(jar))
 	resp.Reset()
 
-	if err := fasthttp.DoRedirects(req, resp, 10); err != nil {
+	if err := utils.Client.DoRedirects(req, resp, 10); err != nil {
 		return nil, err
 	}
 
@@ -211,7 +212,7 @@ func (lf *LoginFetcher) forceLogout(body []byte, jar map[string]string) bool {
 		}
 	})
 	req.SetBody(args.QueryString())
-	if err := fasthttp.Do(req, resp); err != nil {
+	if err := utils.Client.Do(req, resp); err != nil {
 		return false
 	}
 	lf.extractCookies(resp, jar)
@@ -247,7 +248,7 @@ func (lf *LoginFetcher) Cleanup(cookie string) (int, error) {
 	req.Header.SetMethod("DELETE")
 	req.Header.Set("Cookie", cookie)
 
-	if err := fasthttp.Do(req, resp); err != nil {
+	if err := utils.Client.Do(req, resp); err != nil {
 		return 0, err
 	}
 	return resp.StatusCode(), nil

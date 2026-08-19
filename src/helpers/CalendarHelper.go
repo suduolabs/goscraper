@@ -48,7 +48,7 @@ func (c *CalendarFetcher) GetCalendar() (*types.CalendarResponse, error) {
 	req.Header.Set("Referer", "https://academia.srmist.edu.in/")
 	req.Header.Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=7200")
 
-	if err := fasthttp.Do(req, resp); err != nil {
+	if err := utils.Client.Do(req, resp); err != nil {
 		log.Printf("CalendarHelper.GetCalendar: failed to fetch calendar - %v", err)
 		return &types.CalendarResponse{
 			Error:    true,

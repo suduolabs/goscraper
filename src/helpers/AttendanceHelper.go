@@ -50,7 +50,7 @@ func (a *AcademicsFetch) getHTML() (string, error) {
 	req.Header.Set("sec-gpc", "1")
 	req.Header.Set("cookie", a.cookie)
 
-	if err := fasthttp.Do(req, resp); err != nil {
+	if err := utils.Client.Do(req, resp); err != nil {
 		return "", fmt.Errorf("failed to fetch HTML: %v", err)
 	}
 
