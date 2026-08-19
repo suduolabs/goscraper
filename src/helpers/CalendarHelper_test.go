@@ -81,3 +81,44 @@ func TestSelectToday(t *testing.T) {
 		t.Errorf("empty calendar returned %v, %v, %d", today, tomorrow, idx)
 	}
 }
+
+// The signed-out page carries neither the planner table nor the zmlvalue
+// marker. That used to come back as a 200 with an empty Calendar, which the
+// frontend rendered as a crash instead of sending the user to log in again.
+func TestParseCalendarSignedOut(t *testing.T) {
+	c := NewCalendarFetcher(time.Date(2026, time.August, 19, 0, 0, 0, 0, time.UTC), "")
+
+	resp, err := c.parseCalendar("<html><body>Please sign in to continue</body></html>")
+	if err == nil {
+		t.Fatalf("signed-out page parsed without error, got %+v", resp)
+	}
+	if err.Error() != "invalid response format" {
+		t.Errorf("err = %q, want %q so HandleError maps it to tokenInvalid", err.Error(), "invalid response format")
+	}
+	if resp != nil {
+		t.Errorf("response = %+v, want nil", resp)
+	}
+}
+
+func TestParseCalendarReadsPlannerTable(t *testing.T) {
+	html := `<table bgcolor="#FFFFFF">
+<tr><th>Aug '26</th><th>Day</th><th>Event</th><th>DO</th><th></th></tr>
+<tr><td>18</td><td>Tue</td><td></td><td>1</td><td></td></tr>
+<tr><td>19</td><td>Wed</td><td></td><td>2</td><td></td></tr>
+</table>`
+
+	c := NewCalendarFetcher(time.Date(2026, time.August, 19, 0, 0, 0, 0, time.UTC), "")
+	resp, err := c.parseCalendar(html)
+	if err != nil {
+		t.Fatalf("parseCalendar returned %v", err)
+	}
+	if len(resp.Calendar) != 1 || resp.Calendar[0].Month != "Aug '26" {
+		t.Fatalf("calendar = %+v, want one Aug '26 month", resp.Calendar)
+	}
+	if len(resp.Calendar[0].Days) != 2 {
+		t.Fatalf("days = %+v, want 2", resp.Calendar[0].Days)
+	}
+	if resp.Today == nil || resp.Today.Date != "19" {
+		t.Errorf("today = %+v, want day 19", resp.Today)
+	}
+}
