@@ -93,16 +93,13 @@ func (c *CalendarFetcher) parseCalendar(html string) (*types.CalendarResponse, e
 	} else {
 		parts := strings.Split(html, "zmlvalue=\"")
 		if len(parts) < 2 {
-			// Academia serves the signed-out page instead of the planner, so
-			// the marker is missing. Report it the way every other helper
-			// reports an expired session: HandleError turns "invalid response
-			// format" into tokenInvalid, which sends the user back to log in
-			// rather than rendering an empty calendar.
-			log.Printf("CalendarHelper.parseCalendar: planner marker absent, session likely expired")
-			return nil, errors.New("invalid response format")
+			// A missing planner can also mean maintenance or a blocked request.
+			// Inspect the page before deciding that the session has expired.
+			htmlText = html
+		} else {
+			decodedHTML := utils.ConvertHexToHTML(strings.Split(parts[1], "\" > </div> </div>")[0])
+			htmlText = utils.DecodeHTMLEntities(decodedHTML)
 		}
-		decodedHTML := utils.ConvertHexToHTML(strings.Split(parts[1], "\" > </div> </div>")[0])
-		htmlText = utils.DecodeHTMLEntities(decodedHTML)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlText))
@@ -123,6 +120,14 @@ func (c *CalendarFetcher) parseCalendar(html string) (*types.CalendarResponse, e
 			monthHeaders = append(monthHeaders, month)
 		}
 	})
+	if len(monthHeaders) == 0 {
+		text := strings.ToLower(strings.Join(strings.Fields(doc.Text()), " "))
+		if doc.Find(`input[type="password"], form[action*="signin"], form[action*="sign-in"]`).Length() > 0 ||
+			strings.Contains(text, "sign in to continue") {
+			return nil, errors.New("invalid response format")
+		}
+		return nil, errors.New("calendar planner not available in upstream response")
+	}
 
 	data := make([]types.CalendarMonth, len(monthHeaders))
 	for i := range monthHeaders {

@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -120,5 +121,33 @@ func TestParseCalendarReadsPlannerTable(t *testing.T) {
 	}
 	if resp.Today == nil || resp.Today.Date != "19" {
 		t.Errorf("today = %+v, want day 19", resp.Today)
+	}
+}
+
+func TestParseCalendarDoesNotExpireSessionForUnexpectedPages(t *testing.T) {
+	for _, html := range []string{
+		`<html><body>Scheduled maintenance. Please try again later.</body></html>`,
+		`<html><body>Access temporarily blocked</body></html>`,
+		`<table bgcolor="#FFFFFF"><tr><td>Service unavailable</td></tr></table>`,
+		`<div zmlvalue="unavailable" > </div> </div>`,
+	} {
+		t.Run(html, func(t *testing.T) {
+			c := NewCalendarFetcher(time.Now(), "")
+			resp, err := c.parseCalendar(html)
+			if err == nil {
+				t.Fatalf("unexpected page parsed successfully: %+v", resp)
+			}
+			if strings.Contains(err.Error(), "invalid response format") {
+				t.Fatalf("unexpected page incorrectly expires the session: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseCalendarRecognizesSignInForm(t *testing.T) {
+	c := NewCalendarFetcher(time.Now(), "")
+	_, err := c.parseCalendar(`<form action="/signin"><input type="password" name="password"></form>`)
+	if err == nil || err.Error() != "invalid response format" {
+		t.Fatalf("sign-in form error = %v, want session-expiry error", err)
 	}
 }
