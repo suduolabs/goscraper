@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"errors"
 	"fmt"
 	"goscraper/src/types"
 	"goscraper/src/utils"
@@ -48,7 +49,7 @@ func (c *CalendarFetcher) GetCalendar() (*types.CalendarResponse, error) {
 	req.Header.Set("Referer", "https://academia.srmist.edu.in/")
 	req.Header.Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=7200")
 
-	if err := fasthttp.Do(req, resp); err != nil {
+	if err := utils.Client.Do(req, resp); err != nil {
 		log.Printf("CalendarHelper.GetCalendar: failed to fetch calendar - %v", err)
 		return &types.CalendarResponse{
 			Error:    true,
@@ -59,6 +60,12 @@ func (c *CalendarFetcher) GetCalendar() (*types.CalendarResponse, error) {
 	}
 
 	statusCode := resp.StatusCode()
+	// 401 only. A 403 from Academia is as likely to be a WAF or a rate limiter
+	// as an expired session, and this path logs the user out.
+	if statusCode == fasthttp.StatusUnauthorized {
+		log.Printf("CalendarHelper.GetCalendar: server returned status %d", statusCode)
+		return nil, errors.New("invalid response format")
+	}
 	if statusCode != fasthttp.StatusOK {
 		log.Printf("CalendarHelper.GetCalendar: server returned status %d", statusCode)
 		return &types.CalendarResponse{
@@ -72,12 +79,7 @@ func (c *CalendarFetcher) GetCalendar() (*types.CalendarResponse, error) {
 	calendar, err := c.parseCalendar(string(resp.Body()))
 	if err != nil {
 		log.Printf("CalendarHelper.GetCalendar: failed to parse calendar - %v", err)
-		return &types.CalendarResponse{
-			Error:    true,
-			Message:  err.Error(),
-			Status:   500,
-			Calendar: []types.CalendarMonth{},
-		}, nil
+		return nil, err
 	}
 
 	calendar.Status = statusCode
@@ -91,16 +93,13 @@ func (c *CalendarFetcher) parseCalendar(html string) (*types.CalendarResponse, e
 	} else {
 		parts := strings.Split(html, "zmlvalue=\"")
 		if len(parts) < 2 {
-			log.Printf("CalendarHelper.parseCalendar: invalid HTML format")
-			return &types.CalendarResponse{
-				Error:    true,
-				Message:  "invalid HTML format",
-				Status:   500,
-				Calendar: []types.CalendarMonth{},
-			}, nil
+			// A missing planner can also mean maintenance or a blocked request.
+			// Inspect the page before deciding that the session has expired.
+			htmlText = html
+		} else {
+			decodedHTML := utils.ConvertHexToHTML(strings.Split(parts[1], "\" > </div> </div>")[0])
+			htmlText = utils.DecodeHTMLEntities(decodedHTML)
 		}
-		decodedHTML := utils.ConvertHexToHTML(strings.Split(parts[1], "\" > </div> </div>")[0])
-		htmlText = utils.DecodeHTMLEntities(decodedHTML)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlText))
@@ -121,6 +120,14 @@ func (c *CalendarFetcher) parseCalendar(html string) (*types.CalendarResponse, e
 			monthHeaders = append(monthHeaders, month)
 		}
 	})
+	if len(monthHeaders) == 0 {
+		text := strings.ToLower(strings.Join(strings.Fields(doc.Text()), " "))
+		if doc.Find(`input[type="password"], form[action*="signin"], form[action*="sign-in"]`).Length() > 0 ||
+			strings.Contains(text, "sign in to continue") {
+			return nil, errors.New("invalid response format")
+		}
+		return nil, errors.New("calendar planner not available in upstream response")
+	}
 
 	data := make([]types.CalendarMonth, len(monthHeaders))
 	for i := range monthHeaders {

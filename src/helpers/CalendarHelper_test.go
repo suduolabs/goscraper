@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -79,5 +80,74 @@ func TestSelectToday(t *testing.T) {
 	// Empty calendar must not panic.
 	if today, tomorrow, idx = SelectToday(nil, time.Now()); today != nil || tomorrow != nil || idx != 0 {
 		t.Errorf("empty calendar returned %v, %v, %d", today, tomorrow, idx)
+	}
+}
+
+// The signed-out page carries neither the planner table nor the zmlvalue
+// marker. That used to come back as a 200 with an empty Calendar, which the
+// frontend rendered as a crash instead of sending the user to log in again.
+func TestParseCalendarSignedOut(t *testing.T) {
+	c := NewCalendarFetcher(time.Date(2026, time.August, 19, 0, 0, 0, 0, time.UTC), "")
+
+	resp, err := c.parseCalendar("<html><body>Please sign in to continue</body></html>")
+	if err == nil {
+		t.Fatalf("signed-out page parsed without error, got %+v", resp)
+	}
+	if err.Error() != "invalid response format" {
+		t.Errorf("err = %q, want %q so HandleError maps it to tokenInvalid", err.Error(), "invalid response format")
+	}
+	if resp != nil {
+		t.Errorf("response = %+v, want nil", resp)
+	}
+}
+
+func TestParseCalendarReadsPlannerTable(t *testing.T) {
+	html := `<table bgcolor="#FFFFFF">
+<tr><th>Aug '26</th><th>Day</th><th>Event</th><th>DO</th><th></th></tr>
+<tr><td>18</td><td>Tue</td><td></td><td>1</td><td></td></tr>
+<tr><td>19</td><td>Wed</td><td></td><td>2</td><td></td></tr>
+</table>`
+
+	c := NewCalendarFetcher(time.Date(2026, time.August, 19, 0, 0, 0, 0, time.UTC), "")
+	resp, err := c.parseCalendar(html)
+	if err != nil {
+		t.Fatalf("parseCalendar returned %v", err)
+	}
+	if len(resp.Calendar) != 1 || resp.Calendar[0].Month != "Aug '26" {
+		t.Fatalf("calendar = %+v, want one Aug '26 month", resp.Calendar)
+	}
+	if len(resp.Calendar[0].Days) != 2 {
+		t.Fatalf("days = %+v, want 2", resp.Calendar[0].Days)
+	}
+	if resp.Today == nil || resp.Today.Date != "19" {
+		t.Errorf("today = %+v, want day 19", resp.Today)
+	}
+}
+
+func TestParseCalendarDoesNotExpireSessionForUnexpectedPages(t *testing.T) {
+	for _, html := range []string{
+		`<html><body>Scheduled maintenance. Please try again later.</body></html>`,
+		`<html><body>Access temporarily blocked</body></html>`,
+		`<table bgcolor="#FFFFFF"><tr><td>Service unavailable</td></tr></table>`,
+		`<div zmlvalue="unavailable" > </div> </div>`,
+	} {
+		t.Run(html, func(t *testing.T) {
+			c := NewCalendarFetcher(time.Now(), "")
+			resp, err := c.parseCalendar(html)
+			if err == nil {
+				t.Fatalf("unexpected page parsed successfully: %+v", resp)
+			}
+			if strings.Contains(err.Error(), "invalid response format") {
+				t.Fatalf("unexpected page incorrectly expires the session: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseCalendarRecognizesSignInForm(t *testing.T) {
+	c := NewCalendarFetcher(time.Now(), "")
+	_, err := c.parseCalendar(`<form action="/signin"><input type="password" name="password"></form>`)
+	if err == nil || err.Error() != "invalid response format" {
+		t.Fatalf("sign-in form error = %v, want session-expiry error", err)
 	}
 }

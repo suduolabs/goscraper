@@ -31,6 +31,25 @@ func main() {
 		godotenv.Load()
 	}
 
+	app := newApp()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Starting server on port %s...", port)
+	ln, err := net.Listen("tcp", "[::]:"+port)
+	if err != nil {
+		log.Fatalf("Failed to bind: %v", err)
+	}
+	log.Printf("Starting server on port %s...", port)
+	if err := app.Listener(ln); err != nil {
+		log.Printf("Server error: %+v", err)
+	}
+}
+
+// newApp constructs the production middleware and routes without opening a listener.
+func newApp() *fiber.App {
 	app := fiber.New(fiber.Config{
 		Prefork:      false,
 		ServerHeader: "GoScraper",
@@ -148,17 +167,6 @@ func main() {
 		}
 
 		return c.Next()
-	})
-
-	// Universal error handling middleware
-	app.Use(func(c *fiber.Ctx) error {
-		err := c.Next()
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": err.Error(),
-			})
-		}
-		return nil
 	})
 
 	cacheConfig := cache.Config{
@@ -372,19 +380,7 @@ func main() {
 
 	// ----------------------------------------------------
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	log.Printf("Starting server on port %s...", port)
-	ln, err := net.Listen("tcp", "[::]:"+port)
-	if err != nil {
-		log.Fatalf("Failed to bind: %v", err)
-	}
-	log.Printf("Starting server on port %s...", port)
-	if err := app.Listener(ln); err != nil {
-		log.Printf("Server error: %+v", err)
-	}
+	return app
 }
 
 func fetchAllData(token string) (map[string]interface{}, error) {

@@ -54,7 +54,7 @@ func (c *CoursePage) GetPage() (string, error) {
 	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
 	req.Header.Set("sec-gpc", "1")
 
-	if err := fasthttp.Do(req, resp); err != nil {
+	if err := utils.Client.Do(req, resp); err != nil {
 		return "", fmt.Errorf("failed to fetch page: %v", err)
 	}
 

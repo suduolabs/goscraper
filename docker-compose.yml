@@ -1,10 +1,10 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      # Spelled lowercase in this repo; naming it explicitly keeps the build
+      # working on case-sensitive filesystems.
+      dockerfile: dockerfile
     container_name: classpro-backend-standalone
     environment:
       - GO_ENV=production
@@ -15,7 +15,7 @@ services:
       - ./.env:/app/.env:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/hello"]
       interval: 30s
       timeout: 10s
       retries: 3
